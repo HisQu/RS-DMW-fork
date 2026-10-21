@@ -34,6 +34,7 @@ import org.apache.shiro.config.Ini;
 import org.apache.shiro.web.env.IniWebEnvironment;
 import org.pac4j.saml.client.SAML2Client;
 import org.researchspace.config.Configuration;
+import org.researchspace.secrets.Secret;
 import org.researchspace.secrets.SecretResolver;
 import org.researchspace.security.SecurityConfigRecord;
 import org.researchspace.security.SecurityConfigType;
@@ -132,8 +133,17 @@ public class SSOEnvironment extends IniWebEnvironment {
     protected Ini parseConfig() {
         Ini mergedConfig = super.parseConfig();
         // Resolve externally defined secrets.
+        SecretResolver ssoSecretResolver = lookup -> {
+            if (lookup.getLookupKey().startsWith("RS_SSO_")) {
+                String value = System.getenv(lookup.getLookupKey());
+                if (value != null) {
+                    return Optional.of(Secret.fromString(value));
+                }
+            }
+            return this.secretResolver.resolveSecret(lookup);
+        };
         ShiroRealmUtils.resolveSecrets(Sets.newHashSet("clientId.value", "clientSecret.value"), mergedConfig,
-                this.secretResolver);
+                ssoSecretResolver);
         return mergedConfig;
     }
 }
