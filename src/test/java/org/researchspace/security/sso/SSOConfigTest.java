@@ -1,6 +1,8 @@
 package org.researchspace.security.sso;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -13,6 +15,8 @@ import javax.servlet.Filter;
 import org.apache.shiro.config.Ini;
 import org.apache.shiro.config.ogdl.ReflectionBuilder;
 import org.junit.Test;
+import org.pac4j.core.config.Config;
+import org.pac4j.core.context.WebContext;
 import org.researchspace.config.Configuration;
 import org.researchspace.config.groups.EnvironmentConfiguration;
 import org.researchspace.secrets.MapSecretResolver;
@@ -20,6 +24,9 @@ import org.researchspace.security.SecurityConfigRecord;
 import org.researchspace.security.SecurityConfigType;
 import org.researchspace.security.sso.utils.ConfigParameterListValueFactory;
 import org.researchspace.security.sso.utils.ConfigParameterStringValueFactory;
+
+import io.buji.pac4j.context.ShiroSessionStore;
+import io.buji.pac4j.profile.ShiroProfileManager;
 
 public class SSOConfigTest {
     @Test
@@ -29,6 +36,20 @@ public class SSOConfigTest {
         for (String name : new String[] {"securityFilter", "callbackFilter", "logoutFilter"}) {
             Class.forName(ini.getSection("main").get(name)).asSubclass(Filter.class);
         }
+    }
+
+    @Test
+    public void shippedOidcConfigConnectsProfilesToShiro() {
+        Ini ini = Ini.fromResourcePath(
+                "classpath:org/researchspace/security/sso/shiro-sso-oidc-default.ini");
+        Map<String, String> bridge = new LinkedHashMap<>();
+        bridge.put("config", ini.getSection("main").get("config"));
+        bridge.put("pac4jToShiroBridge", ini.getSection("main").get("pac4jToShiroBridge"));
+        bridge.put("pac4jToShiroBridge.config", ini.getSection("main").get("pac4jToShiroBridge.config"));
+        Config config = (Config) new ReflectionBuilder().buildObjects(bridge).get("config");
+        assertSame(ShiroSessionStore.INSTANCE, config.getSessionStore());
+        assertTrue(config.getProfileManagerFactory().apply(mock(WebContext.class), ShiroSessionStore.INSTANCE)
+                instanceof ShiroProfileManager);
     }
 
     @Test
