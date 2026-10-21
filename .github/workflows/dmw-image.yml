@@ -38,6 +38,28 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Exclude the unused development bundle
+        # Gretty resolves a retired Blazegraph snapshot even for the standalone WAR.
+        # Keep upstream's WAR tasks and Docker recipe; DMW supplies QLever separately.
+        shell: python
+        run: |
+          from pathlib import Path
+          build = Path('build.gradle')
+          text = build.read_text()
+          start = text.index("farms {")
+          end = text.index("def defaultJvmArgs", start)
+          text = text[:start] + text[end:]
+          text = '\n'.join(line for line in text.split('\n') if not any(
+              task in line for task in (
+                  'tasks.farmRunresearchspace.dependsOn',
+                  'tasks.farmRunDebugresearchspace.dependsOn',
+                  'tasks.buildProductresearchspace.dependsOn',
+                  'tasks.debugAll.dependsOn',
+                  'tasks.runAll.dependsOn',
+                  'tasks.buildZip.dependsOn',
+              )
+          ))
+          build.write_text(text)
       - name: Test the DMW regressions
         env:
           RS_SSO_OIDC_DISCOVERY_URI: http://fictional.invalid/.well-known/openid-configuration
