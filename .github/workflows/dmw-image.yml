@@ -1,0 +1,87 @@
+name: DMW ResearchSpace image
+
+on:
+  push:
+    branches: [dmw/4.1.0]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: dmw-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+            ~/.npm
+          key: dmw-${{ runner.os }}-${{ hashFiles('build.gradle', 'gradle/wrapper/gradle-wrapper.properties', 'package-lock.json') }}
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Test the DMW regressions
+        env:
+          RS_SSO_OIDC_DISCOVERY_URI: http://fictional.invalid/.well-known/openid-configuration
+          RS_SSO_CLIENT_ID: fictional-client
+          RS_SSO_CLIENT_SECRET: fictional-secret
+          RS_SSO_OIDC_ROLE_JSON_PATHS: '\$.ext.roles'
+        run: >-
+          ./gradlew --no-daemon test -x testKarma
+          --tests org.researchspace.security.sso.SSOConfigTest
+          --tests org.researchspace.repository.SPARQLBearerTokenAuthRepositoryFactoryTest
+      - name: Build the upstream WAR
+        env:
+          ORG_GRADLE_PROJECT_buildVersion: ${{ github.sha }}
+        run: ./gradlew --no-daemon war
+      - name: Prepare the upstream Docker context
+        run: |
+          cp build/libs/ROOT-*.war dist/docker/platform/ROOT.war
+          mkdir -p dist/docker/platform/config
+          cp src/main/resources/org/researchspace/apps/default/config/shiro.ini dist/docker/platform/config/
+          cp -r dist/migrations dist/docker/platform/
+      - name: Build and publish
+        id: publish
+        uses: docker/build-push-action@v6
+        with:
+          context: dist/docker/platform
+          push: true
+          tags: ghcr.io/hisqu/rs-dmw-fork:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/HisQu/RS-DMW-fork
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+      - name: Record the immutable pin
+        env:
+          IMAGE_DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          echo "ghcr.io/hisqu/rs-dmw-fork@${IMAGE_DIGEST}" | tee image-pin.txt
+          echo "Commit: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          cat image-pin.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-pin
+          path: image-pin.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: regression-results
+          path: build/test-results/test
