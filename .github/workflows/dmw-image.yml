@@ -67,13 +67,13 @@ jobs:
           RS_SSO_CLIENT_SECRET: fictional-secret
           RS_SSO_OIDC_ROLE_JSON_PATHS: '\$.ext.roles'
         run: >-
-          ./gradlew --no-daemon test -x testKarma
+          ./gradlew --no-daemon :test -x testKarma
           --tests org.researchspace.security.sso.SSOConfigTest
           --tests org.researchspace.repository.SPARQLBearerTokenAuthRepositoryFactoryTest
       - name: Build the upstream WAR
         env:
           ORG_GRADLE_PROJECT_buildVersion: ${{ github.sha }}
-        run: ./gradlew --no-daemon war
+        run: ./gradlew --no-daemon :war
       - name: Prepare the upstream Docker context
         run: |
           cp build/libs/ROOT-*.war dist/docker/platform/ROOT.war
